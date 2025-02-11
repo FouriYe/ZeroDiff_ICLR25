@@ -239,83 +239,6 @@ class ZERODIFF(torch.nn.Module):
         G_cost, vae_loss_seen = self.update_G(x_0_real, con_0_real, att_0_real, label)
         return D_cost, Wasserstein_D, distill_loss, G_cost, vae_loss_seen
 
-    def get_W_distance(self, train_seen_x_0_real, train_seen_con_0_real, train_seen_att, test_seen_x_0_real,test_seen_con_0_real, test_seen_att):
-        self.netD_x0.eval()
-        self.netD_xt.eval()
-        self.netD_xc.eval()
-
-        critic_scores = {}
-
-        n_sample = test_seen_x_0_real.shape[0]
-        _ts_feat_1 = torch.full((n_sample,), 1, dtype=torch.int64).to(self.device)
-        _ts_feat_2 = torch.full((n_sample,), 2, dtype=torch.int64).to(self.device)
-        _ts_feat_3 = torch.full((n_sample,), 3, dtype=torch.int64).to(self.device)
-        test_seen_x_1_real, test_seen_x_1p1_real, _ = self.q_sample_pairs(test_seen_x_0_real, _ts_feat_1)
-        test_seen_x_2_real, test_seen_x_2p1_real, _ = self.q_sample_pairs(test_seen_x_0_real, _ts_feat_2)
-        test_seen_x_3_real, test_seen_x_3p1_real, _ = self.q_sample_pairs(test_seen_x_0_real, _ts_feat_3)
-
-        z = torch.randn(n_sample, self.dim_noise).to(self.device)
-        test_seen_x_0_fake = self.netG(z, test_seen_att, test_seen_con_0_real, test_seen_x_1p1_real.detach(), _ts_feat_1)
-        test_seen_x_1_fake = self.sample_posterior(test_seen_x_0_fake, test_seen_x_1p1_real, _ts_feat_1)
-        test_seen_x_0_fake = self.netG(z, test_seen_att, test_seen_con_0_real, test_seen_x_2p1_real.detach(), _ts_feat_2)
-        test_seen_x_2_fake = self.sample_posterior(test_seen_x_0_fake, test_seen_x_2p1_real, _ts_feat_2)
-        test_seen_x_0_fake = self.netG(z, test_seen_att, test_seen_con_0_real, test_seen_x_3p1_real.detach(), _ts_feat_3)
-        test_seen_x_3_fake = self.sample_posterior(test_seen_x_0_fake, test_seen_x_3p1_real, _ts_feat_3)
-
-        test_seen_x_1_real, test_seen_x_1p1_real, _ = self.q_sample_pairs(test_seen_x_0_fake, _ts_feat_1)
-        test_seen_x_2_real, test_seen_x_2p1_real, _ = self.q_sample_pairs(test_seen_x_0_fake, _ts_feat_2)
-        test_seen_x_3_real, test_seen_x_3p1_real, _ = self.q_sample_pairs(test_seen_x_0_fake, _ts_feat_3)
-
-        critic_scores['critic_test_real_x0'] = self.netD_x0(test_seen_x_0_real, test_seen_att).mean()
-        critic_scores['critic_test_real_x1'] = self.netD_xt(test_seen_x_1_real, test_seen_x_1p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_1).mean()
-        critic_scores['critic_test_real_x2'] = self.netD_xt(test_seen_x_2_real, test_seen_x_2p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_2).mean()
-        critic_scores['critic_test_real_x3'] = self.netD_xt(test_seen_x_3_real, test_seen_x_3p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_3).mean()
-        critic_scores['critic_test_real_xc'] = self.netD_xc(test_seen_x_0_real, test_seen_con_0_real).mean()
-
-        critic_scores['critic_test_fake_x0'] = self.netD_x0(test_seen_x_0_fake, test_seen_att).mean()
-        critic_scores['critic_test_fake_x1'] = self.netD_xt(test_seen_x_1_fake, test_seen_x_1p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_1).mean()
-        critic_scores['critic_test_fake_x2'] = self.netD_xt(test_seen_x_2_fake, test_seen_x_2p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_2).mean()
-        critic_scores['critic_test_fake_x3'] = self.netD_xt(test_seen_x_3_fake, test_seen_x_3p1_real, test_seen_att, test_seen_con_0_real, _ts_feat_3).mean()
-        critic_scores['critic_test_fake_xc'] = self.netD_xc(test_seen_x_0_fake, test_seen_con_0_real).mean()
-
-        n_sample = train_seen_x_0_real.shape[0]
-        _ts_feat_1 = torch.full((n_sample,), 1, dtype=torch.int64).to(self.device)
-        _ts_feat_2 = torch.full((n_sample,), 2, dtype=torch.int64).to(self.device)
-        _ts_feat_3 = torch.full((n_sample,), 3, dtype=torch.int64).to(self.device)
-        train_seen_x_1_real, train_seen_x_1p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_1)
-        train_seen_x_2_real, train_seen_x_2p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_2)
-        train_seen_x_3_real, train_seen_x_3p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_3)
-
-        z = torch.randn(n_sample, self.dim_noise).to(self.device)
-        train_seen_x_0_fake = self.netG(z, train_seen_att, train_seen_con_0_real, train_seen_x_1p1_real.detach(), _ts_feat_1)
-        train_seen_x_1_fake = self.sample_posterior(train_seen_x_0_fake, train_seen_x_1p1_real, _ts_feat_1)
-        train_seen_x_0_fake = self.netG(z, train_seen_att, train_seen_con_0_real, train_seen_x_2p1_real.detach(), _ts_feat_2)
-        train_seen_x_2_fake = self.sample_posterior(train_seen_x_0_fake, train_seen_x_2p1_real, _ts_feat_2)
-        train_seen_x_0_fake = self.netG(z, train_seen_att, train_seen_con_0_real, train_seen_x_3p1_real.detach(), _ts_feat_3)
-        train_seen_x_3_fake = self.sample_posterior(train_seen_x_0_fake, train_seen_x_3p1_real, _ts_feat_3)
-
-        train_seen_x_1_real, train_seen_x_1p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_1)
-        train_seen_x_2_real, train_seen_x_2p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_2)
-        train_seen_x_3_real, train_seen_x_3p1_real, _ = self.q_sample_pairs(train_seen_x_0_real, _ts_feat_3)
-
-        critic_scores['critic_train_real_x0'] = self.netD_x0(train_seen_x_0_real, train_seen_att).mean()
-        critic_scores['critic_train_real_x1'] = self.netD_xt(train_seen_x_1_real, train_seen_x_1p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_1).mean()
-        critic_scores['critic_train_real_x2'] = self.netD_xt(train_seen_x_2_real, train_seen_x_2p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_2).mean()
-        critic_scores['critic_train_real_x3'] = self.netD_xt(train_seen_x_3_real, train_seen_x_3p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_3).mean()
-        critic_scores['critic_train_real_xc'] = self.netD_xc(train_seen_x_0_real, train_seen_con_0_real).mean()
-
-        critic_scores['critic_train_fake_x0'] = self.netD_x0(train_seen_x_0_fake, train_seen_att).mean()
-        critic_scores['critic_train_fake_x1'] = self.netD_xt(train_seen_x_1_fake, train_seen_x_1p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_1).mean()
-        critic_scores['critic_train_fake_x2'] = self.netD_xt(train_seen_x_2_fake, train_seen_x_2p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_2).mean()
-        critic_scores['critic_train_fake_x3'] = self.netD_xt(train_seen_x_3_fake, train_seen_x_3p1_real, train_seen_att, train_seen_con_0_real, _ts_feat_3).mean()
-        critic_scores['critic_train_fake_xc'] = self.netD_xc(train_seen_x_0_fake, train_seen_con_0_real).mean()
-
-        self.netD_x0.train()
-        self.netD_xt.train()
-        self.netD_xc.train()
-
-        return critic_scores
-
     def update_D(self, x_0_real, con_0_real, att_0_real, gp_sum, label):
         for p in self.netE.parameters():
             p.requires_grad = False
@@ -478,25 +401,25 @@ class ZERODIFF(torch.nn.Module):
     def sample_from_model(self, att, progressive=False):
         n_sample = att.shape[0]
         with torch.no_grad():
-            x_t = torch.randn(n_sample, self.dim_v).to(self.device)
+            x_tp1 = torch.randn(n_sample, self.dim_v).to(self.device)
             z = torch.randn(n_sample, self.dim_noise).to(self.device)
 
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device) # torch.randint(0, self.n_T + 1, (n_sample,), dtype=torch.int64).to(self.device)
-            con_t = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_t, _ts_con)
+            con_tp1 = torch.randn(n_sample, 2048).to(self.device)
+            con_0_fake = self.netG_con(z_con, att, con_tp1, _ts_con)
             con_0_fake = con_0_fake.detach()
 
             if progressive:
                 for i in reversed(range(self.n_T)):
                     _ts = torch.full((n_sample,), i, dtype=torch.int64).to(x_t.device)
-                    x_0_pred = self.netG(z, att, con_0_fake, x_t, _ts)
-                    x_t_sub_one = self.sample_posterior(x_0_pred, x_t, _ts.long())
-                    x_t = x_t_sub_one.detach()
+                    x_0_pred = self.netG(z, att, con_0_fake, x_tp1, _ts)
+                    x_t_fake = self.sample_posterior(x_0_pred, x_tp1, _ts.long())
+                    x_tp1 = x_t_fake.detach()
                 x_0_fake = x_0_pred.detach()
             else:
                 _ts = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-                x_0_fake = self.netG(z, att, con_0_fake, x_t, _ts)
+                x_0_fake = self.netG(z, att, con_0_fake, x_tp1, _ts)
                 x_0_fake = x_0_fake.detach()
 
         return x_0_fake, con_0_fake
