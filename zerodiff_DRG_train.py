@@ -184,7 +184,7 @@ class DDPMGAN(torch.nn.Module):
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
 
-        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)
         con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
 
         criticD_real_c0 = -self.netD_c0(con_0_real, att_0_real).mean()
@@ -228,7 +228,7 @@ class DDPMGAN(torch.nn.Module):
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
-        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)
         con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
 
         errG = 0.0
@@ -250,10 +250,9 @@ class DDPMGAN(torch.nn.Module):
         n_sample = att.shape[0]
         with torch.no_grad():
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
-            # _ts_con = self.n_T + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-            con_t_real = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_t_real, _ts_con)
+            con_tp1_real = torch.randn(n_sample, 2048).to(self.device)
+            con_0_fake = self.netG_con(z_con, att, con_tp1_real, _ts_con)
         return con_0_fake
 
     def q_sample_pairs(self, x_0, t):
