@@ -86,7 +86,7 @@ class DATA_LOADER(object):
         else:
             self.attribute = self.ori_attribute
 
-        matcontent = sio.loadmat(opt.dataroot + "/" + opt.dataset + "/ce_ce_backup.mat")
+        matcontent = sio.loadmat(opt.dataroot + "/" + opt.dataset + "/ce_ce.mat")
         feature = matcontent['features']
 
         self.train_label = torch.from_numpy(label[trainval_loc]).long()
@@ -97,7 +97,7 @@ class DATA_LOADER(object):
         self.test_seen_feature = torch.from_numpy(feature[test_seen_loc]).float()
         self.train_feature, self.test_seen_feature, self.test_unseen_feature = preprocessing_fun(opt, self.train_feature, self.test_seen_feature, self.test_unseen_feature)
 
-        matcontent = sio.loadmat(opt.dataroot + "/" + opt.dataset + "/con_paco_backup.mat")
+        matcontent = sio.loadmat(opt.dataroot + "/" + opt.dataset + "/con_paco.mat")
         paco_feature = matcontent['features']
         self.train_paco = torch.from_numpy(paco_feature[trainval_loc]).float()
         self.test_unseen_paco = torch.from_numpy(paco_feature[test_unseen_loc]).float()
