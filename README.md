@@ -8,6 +8,10 @@ Zero-shot Learning (ZSL) aims to enable classifiers to identify unseen classes. 
     <img width="840" alt="teaser" src="asserts/banner.png"/>
 </div>
 
+
+<br/><br/> 
+
+
 <div align="center">
     <img width="840" alt="teaser" src="asserts/method.png"/>
 </div>
