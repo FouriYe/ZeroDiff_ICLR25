@@ -34,11 +34,11 @@ os.makedirs(folder_name, exist_ok=True)
 folder_name = "./out"
 os.makedirs(folder_name, exist_ok=True)
 
-logger_name = "./log/%s/zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%s" % (
+logger_name = "./log/%s/train_zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%s" % (
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
     str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.factor_dist, opt.syn_num)
 logger = Logger(logger_name)
-model_save_name = "./out/%s/zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%d" % (
+model_save_name = "./out/%s/train_zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%d" % (
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
     str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.factor_dist, opt.syn_num)
 
@@ -120,7 +120,7 @@ def WeightedL14att(pred, gt):
     loss = wt * (pred - gt).abs()
     return loss.sum() / loss.size(0)
 
-def generate_syn_feature(ddpmgan, classes, attribute, num, progressive=False):
+def generate_syn_feature(zerodiff, classes, attribute, num, progressive=False):
     nclass = classes.size(0)
     syn_feature = torch.FloatTensor(nclass * num, opt.resSize)
     syn_con = torch.FloatTensor(nclass * num, opt.resSize)
@@ -134,7 +134,7 @@ def generate_syn_feature(ddpmgan, classes, attribute, num, progressive=False):
         syn_att.copy_(iclass_att.repeat(num, 1))
         att = Variable(syn_att, volatile=True)
 
-        fake, fake_con = ddpmgan.sample_from_model(att, progressive=progressive)
+        fake, fake_con = zerodiff.sample_from_model(att, progressive=progressive)
 
         output = fake
         output_con = fake_con
@@ -171,10 +171,10 @@ class ZERODIFF(torch.nn.Module):
         self.posterior_coefficients = zerodiff_tools.ddpmgan_posterior_coefficients(betas[0], betas[1], n_T, device, False)
 
         self.netE = zerodiff_tools.Encoder(opt).to(self.device)
-        self.netG = zerodiff_tools.Generator_Diff_v1_con(opt).to(self.device)
-        self.netD_x0 = zerodiff_tools.Discriminator_x0(opt).to(self.device)
-        self.netD_xt = zerodiff_tools.Discriminator_xt_con(opt).to(self.device)
-        self.netD_xc = zerodiff_tools.Discriminator_xc(opt).to(self.device)
+        self.netG = zerodiff_tools.DFG_Generator(opt).to(self.device)
+        self.netD_x0 = zerodiff_tools.DFG_Discriminator_x0(opt).to(self.device)
+        self.netD_xt = zerodiff_tools.DFG_Discriminator_xt(opt).to(self.device)
+        self.netD_xc = zerodiff_tools.DFG_Discriminator_xc(opt).to(self.device)
         self.netDec = zerodiff_tools.V2S_mapping(opt, opt.attSize).to(self.device)
 
         self.optimizerE = optim.Adam(self.netE.parameters(), lr=opt.lr)
@@ -194,7 +194,6 @@ class ZERODIFF(torch.nn.Module):
         self.factor_dist = opt.factor_dist
 
         self.loss_mse = torch.nn.MSELoss(reduce=False)
-        self.loss_con = ce_model.SupConLoss_clear(0.1)
 
         self.batch_size = opt.batch_size
         self.data = data
@@ -218,19 +217,12 @@ class ZERODIFF(torch.nn.Module):
         self.interval_recorder_sum['criticD_test_real_xt'] = 0.0
         self.interval_recorder_sum['criticD_test_real_xc'] = 0.0
 
-        self.interval_recorder_sum['w_dist_train_real_train_fake_x0'] = 0.0
-        self.interval_recorder_sum['w_dist_train_real_train_fake_xt'] = 0.0
-        self.interval_recorder_sum['w_dist_train_real_train_fake_xc'] = 0.0
-        self.interval_recorder_sum['w_dist_train_real_test_real_x0'] = 0.0
-        self.interval_recorder_sum['w_dist_train_real_test_real_xt'] = 0.0
-        self.interval_recorder_sum['w_dist_train_real_test_real_xc'] = 0.0
-
     def forward(self):
         gp_sum = 0  # lAMBDA VARIABLE
         for iter_d in range(opt.critic_iter):
             x_0_real, con_0_real, att_0_real, label = sample(self.batch_size)
             D_cost, Wasserstein_D, gp_sum, distill_loss = self.update_D(x_0_real, con_0_real, att_0_real, gp_sum, label)
-        
+
         gp_sum /= (self.gamma_ADV * self.lambda1 * opt.critic_iter)
         if (gp_sum > 1.05).sum() > 0:
             self.lambda1 *= 1.1
@@ -322,7 +314,6 @@ class ZERODIFF(torch.nn.Module):
         self.optimizerD_xt.step()
         self.optimizerD_xc.step()
 
-
         with torch.no_grad():
             test_seen_x_0_real, test_seen_con_0_real, test_seen_att_0_real = sampleTestSeen()
             test_seen_x_t_real, test_seen_x_tp1_real, ratio_x0 = self.q_sample_pairs(test_seen_x_0_real, _ts_feat)
@@ -339,12 +330,6 @@ class ZERODIFF(torch.nn.Module):
         self.interval_recorder_sum['criticD_test_real_x0'] += criticD_test_real_x0.mean()
         self.interval_recorder_sum['criticD_test_real_xt'] += criticD_test_real_xt.mean()
         self.interval_recorder_sum['criticD_test_real_xc'] += criticD_test_real_xc.mean()
-        self.interval_recorder_sum['w_dist_train_real_train_fake_x0'] += (criticD_real_x0.mean()-criticD_fake_x0.mean()) # previous used
-        self.interval_recorder_sum['w_dist_train_real_train_fake_xt'] += (criticD_real_xt.mean()-criticD_fake_xt.mean()) # previous used
-        self.interval_recorder_sum['w_dist_train_real_train_fake_xc'] += (criticD_real_xc.mean()-criticD_fake_xc.mean())
-        self.interval_recorder_sum['w_dist_train_real_test_real_x0'] += (criticD_real_x0.mean()-criticD_test_real_x0.mean()) # previous used
-        self.interval_recorder_sum['w_dist_train_real_test_real_xt'] += (criticD_real_xt.mean()-criticD_test_real_xt.mean()) # previous used
-        self.interval_recorder_sum['w_dist_train_real_test_real_xc'] += (criticD_real_xc.mean()-criticD_test_real_xc.mean())
 
         return D_cost, Wasserstein_D, gp_sum, distill_loss
 
@@ -401,25 +386,25 @@ class ZERODIFF(torch.nn.Module):
     def sample_from_model(self, att, progressive=False):
         n_sample = att.shape[0]
         with torch.no_grad():
-            x_tp1 = torch.randn(n_sample, self.dim_v).to(self.device)
+            x_t = torch.randn(n_sample, self.dim_v).to(self.device)
             z = torch.randn(n_sample, self.dim_noise).to(self.device)
 
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device) # torch.randint(0, self.n_T + 1, (n_sample,), dtype=torch.int64).to(self.device)
-            con_tp1 = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_tp1, _ts_con)
+            con_t = torch.randn(n_sample, 2048).to(self.device)
+            con_0_fake = self.netG_con(z_con, att, con_t, _ts_con)
             con_0_fake = con_0_fake.detach()
 
             if progressive:
                 for i in reversed(range(self.n_T)):
                     _ts = torch.full((n_sample,), i, dtype=torch.int64).to(x_t.device)
-                    x_0_pred = self.netG(z, att, con_0_fake, x_tp1, _ts)
-                    x_t_fake = self.sample_posterior(x_0_pred, x_tp1, _ts.long())
-                    x_tp1 = x_t_fake.detach()
+                    x_0_pred = self.netG(z, att, con_0_fake, x_t, _ts)
+                    x_t_sub_one = self.sample_posterior(x_0_pred, x_t, _ts.long())
+                    x_t = x_t_sub_one.detach()
                 x_0_fake = x_0_pred.detach()
             else:
                 _ts = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-                x_0_fake = self.netG(z, att, con_0_fake, x_tp1, _ts)
+                x_0_fake = self.netG(z, att, con_0_fake, x_t, _ts)
                 x_0_fake = x_0_fake.detach()
 
         return x_0_fake, con_0_fake
@@ -477,31 +462,6 @@ class ZERODIFF(torch.nn.Module):
         return sample_x_pos
 
 
-def generate_syn_feature_from_netG_con(netG_con, classes, attribute, num):
-    nclass = classes.size(0)
-    syn_feature = torch.FloatTensor(nclass * num, opt.resSize)
-    syn_label = torch.LongTensor(nclass * num)
-    syn_att = torch.FloatTensor(num, opt.attSize)
-    syn_noise = torch.FloatTensor(num, opt.noiseSize)
-    if opt.cuda:
-        syn_att = syn_att.cuda()
-        syn_noise = syn_noise.cuda()
-
-    for i in range(nclass):
-        iclass = classes[i]
-        iclass_att = attribute[iclass]
-        syn_att.copy_(iclass_att.repeat(num, 1))
-        syn_noise.normal_(0, 1)
-        with torch.no_grad():
-            z_con = torch.randn(num, opt.noiseSize).cuda()
-            _ts_con = netG_con.n_T + torch.zeros((num,), dtype=torch.int64).cuda()
-            con_t_real = torch.randn(num, 2048).cuda()
-            output, _ = netG_con(z_con, con_t_real, syn_att, _ts_con, use_clamp=True)
-        syn_feature.narrow(0, i * num, num).copy_(output.data.cpu())
-        syn_label.narrow(0, i * num, num).fill_(iclass)
-    return syn_feature, syn_label
-
-
 zerodiff = ZERODIFF(data, n_T=opt.n_T, betas=(opt.ddpmbeta1, opt.ddpmbeta2), seenclasses=data.seenclasses,
                   unseenclasses=data.unseenclasses, attribute=data.attribute,
                   netG_con_model_path=opt.netG_con_model_path, device='cuda')
@@ -544,7 +504,7 @@ best_acc_seen_list_VCS, best_acc_unseen_list_VCS, best_acc_zsl_list_VCS = [], []
 n_iter=data.ntrain//opt.batch_size
 for epoch in range(0, opt.nepoch):
     for i in range(0, data.ntrain, opt.batch_size):
-        D_cost, Wasserstein_D, distill_loss, G_cost, vae_loss_seen = ddpmgan()
+        D_cost, Wasserstein_D, distill_loss, G_cost, vae_loss_seen = zerodiff()
 
     log_record = '[%d/%d] Loss_D: %.4f, Wasserstein_dist:%.4f, distill_loss:%.4f' % (
         epoch, opt.nepoch, D_cost.item(), Wasserstein_D.item(), distill_loss.item())
@@ -556,26 +516,18 @@ for epoch in range(0, opt.nepoch):
     print(log_record)
     logger.write(log_record + '\n')
 
-    criticD_train_real_x0 = ddpmgan.interval_recorder_sum['criticD_train_real_x0'].item() / n_iter
-    criticD_train_real_xt = ddpmgan.interval_recorder_sum['criticD_train_real_xt'].item() / n_iter
-    criticD_train_real_xc = ddpmgan.interval_recorder_sum['criticD_train_real_xc'].item() / n_iter
+    criticD_train_real_x0 = ZERODIFF.interval_recorder_sum['criticD_train_real_x0'].item() / n_iter
+    criticD_train_real_xt = zerodiff.interval_recorder_sum['criticD_train_real_xt'].item() / n_iter
+    criticD_train_real_xc = zerodiff.interval_recorder_sum['criticD_train_real_xc'].item() / n_iter
 
-    criticD_test_real_x0 = ddpmgan.interval_recorder_sum['criticD_test_real_x0'].item() / n_iter
-    criticD_test_real_xt = ddpmgan.interval_recorder_sum['criticD_test_real_xt'].item() / n_iter
-    criticD_test_real_xc = ddpmgan.interval_recorder_sum['criticD_test_real_xc'].item() / n_iter
+    criticD_test_real_x0 = zerodiff.interval_recorder_sum['criticD_test_real_x0'].item() / n_iter
+    criticD_test_real_xt = zerodiff.interval_recorder_sum['criticD_test_real_xt'].item() / n_iter
+    criticD_test_real_xc = zerodiff.interval_recorder_sum['criticD_test_real_xc'].item() / n_iter
 
-    criticD_train_fake_x0 = ddpmgan.interval_recorder_sum['criticD_train_fake_x0'].item() / n_iter
-    criticD_train_fake_xt = ddpmgan.interval_recorder_sum['criticD_train_fake_xt'].item() / n_iter
-    criticD_train_fake_xc = ddpmgan.interval_recorder_sum['criticD_train_fake_xc'].item() / n_iter
-
-    w_dist_train_real_train_fake_x0 = ddpmgan.interval_recorder_sum['w_dist_train_real_train_fake_x0'].item() / n_iter
-    w_dist_train_real_train_fake_xt = ddpmgan.interval_recorder_sum['w_dist_train_real_train_fake_xt'].item() / n_iter
-    w_dist_train_real_train_fake_xc = ddpmgan.interval_recorder_sum['w_dist_train_real_train_fake_xc'].item() / n_iter
-
-    w_dist_train_real_test_real_x0 = ddpmgan.interval_recorder_sum['w_dist_train_real_test_real_x0'].item() / n_iter
-    w_dist_train_real_test_real_xt = ddpmgan.interval_recorder_sum['w_dist_train_real_test_real_xt'].item() / n_iter
-    w_dist_train_real_test_real_xc = ddpmgan.interval_recorder_sum['w_dist_train_real_test_real_xc'].item() / n_iter
-    ddpmgan.init_recorder()
+    criticD_train_fake_x0 = zerodiff.interval_recorder_sum['criticD_train_fake_x0'].item() / n_iter
+    criticD_train_fake_xt = zerodiff.interval_recorder_sum['criticD_train_fake_xt'].item() / n_iter
+    criticD_train_fake_xc = zerodiff.interval_recorder_sum['criticD_train_fake_xc'].item() / n_iter
+    zerodiff.init_recorder()
 
     log_record = '[%d/%d] D_train_real_x0: %.6f, D_train_real_xt: %.6f, D_train_real_xc: %.6f' % (epoch, opt.nepoch, criticD_train_real_x0, criticD_train_real_xt, criticD_train_real_xc)
     print(log_record)
@@ -586,14 +538,6 @@ for epoch in range(0, opt.nepoch):
     logger.write(log_record + '\n')
 
     log_record = '[%d/%d] D_train_fake_x0: %.6f, D_train_fake_xt: %.6f, D_train_fake_xc: %.6f' % (epoch, opt.nepoch, criticD_train_fake_x0, criticD_train_fake_xt, criticD_train_fake_xc)
-    print(log_record)
-    logger.write(log_record + '\n')
-
-    log_record = '[%d/%d] train_real_x0-train_fake_x0: %.6f, train_real_xt-train_fake_xt: %.6f, train_real_x0-train_fake_xc: %.6f' % (epoch, opt.nepoch, w_dist_train_real_train_fake_x0, w_dist_train_real_train_fake_xt, w_dist_train_real_train_fake_xc)
-    print(log_record)
-    logger.write(log_record + '\n')
-
-    log_record = '[%d/%d] train_real_x0-test_real_x0: %.6f, train_real_xt-test_real_xt: %.6f, train_real_xc-test_real_xc: %.6f' % (epoch, opt.nepoch, w_dist_train_real_test_real_x0, w_dist_train_real_test_real_xt, w_dist_train_real_test_real_xc)
     print(log_record)
     logger.write(log_record + '\n')
 
