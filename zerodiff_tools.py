@@ -96,64 +96,11 @@ class TimeEmbedFC(nn.Module):
         x = x.view(-1, self.input_dim)
         return self.model(x)
 
-#Decoder/Generator
-class Generator(nn.Module):
-
-    def __init__(self, opt):
-        super(Generator,self).__init__()
-        layer_sizes = opt.decoder_layer_sizes
-        latent_size=opt.noiseSize
-        input_size = latent_size + opt.attSize
-        self.fc1 = nn.Linear(input_size, layer_sizes[0])
-        self.fc3 = nn.Linear(layer_sizes[0], layer_sizes[1])
-        self.lrelu = nn.LeakyReLU(0.2, True)
-        self.sigmoid=nn.Sigmoid()
-        self.apply(weights_init)
-
-    def forward(self, z, att=None):
-        z = torch.cat((z, att), dim=-1)
-        x1 = self.lrelu(self.fc1(z))
-        x = self.sigmoid(self.fc3(x1))
-        self.out = x1
-        return x
-
-class Generator_con(nn.Module):
-    def __init__(self, opt):
-        super(Generator_con, self).__init__()
-        input_size = opt.noiseSize + opt.attSize + opt.attSize + 2048
-        self.n_T = opt.n_T
-        self.dim_t = opt.dim_t
-        self.time_embed = TimeEmbedFC(opt.dim_t, opt.attSize)
-
-        self.fc1 = nn.Linear(input_size, 4096)
-        self.fc2 = nn.Linear(4096, 2048)
-        self.fc3 = nn.Linear(2048, 2048)
-
-        self.lrelu = nn.LeakyReLU(0.2, True)
-        self.relu = nn.ReLU(True)
-        self.sigmoid = nn.Sigmoid()
-        self.apply(weights_init)
-
-    def forward(self, z, con_t, att, t, use_clamp=False):
-        t_emb_ = timestep_embedding(t, self.dim_t, repeat_only=False)
-        t_emb = self.time_embed(t_emb_)
-        # t_rep = F.normalize(t_emb, p=2, dim=1)
-
-        input = torch.cat((z, con_t, att, t_emb), dim=-1)
-        h = self.lrelu(self.fc1(input))
-        x = self.sigmoid(self.fc2(h))
-        if use_clamp==True:
-            x = torch.clamp(x, 0, 1)
-        emb = self.relu(self.fc3(x))
-        return x, emb
-    def getEmd(self, x):
-        return self.relu(self.fc3(x))
-
 # Decoder/Generator
-class Generator_Diff_v1(nn.Module):
+class DRG_Generator(nn.Module):
     # for AWA and CUB
     def __init__(self, opt):
-        super(Generator_Diff_v1, self).__init__()
+        super(DRG_Generator, self).__init__()
         layer_sizes = opt.decoder_layer_sizes
         latent_size = opt.noiseSize
 
@@ -187,10 +134,10 @@ class Generator_Diff_v1(nn.Module):
         return x
 
 # Decoder/Generator
-class Generator_Diff_v1_con(nn.Module):
+class DFG_Generator(nn.Module):
     # for AWA and CUB
     def __init__(self, opt):
-        super(Generator_Diff_v1_con, self).__init__()
+        super(DFG_Generator, self).__init__()
         layer_sizes = opt.decoder_layer_sizes
         latent_size = opt.noiseSize
 
@@ -226,10 +173,9 @@ class Generator_Diff_v1_con(nn.Module):
         x = self.act(self.fc2(x1))
         return x
 
-#conditional discriminator for inductive
-class Discriminator_xc(nn.Module):
+class DFG_Discriminator_xc(nn.Module):
     def __init__(self, opt):
-        super(Discriminator_xc, self).__init__()
+        super(DFG_Discriminator_xc, self).__init__()
         self.fc1 = nn.Linear(opt.resSize +opt.attSize, opt.ndh)
         self.fc2 = nn.Linear(opt.ndh, 1)
         self.con_emb_layers = TimeEmbedFC(2048, opt.attSize)
@@ -262,10 +208,9 @@ class Discriminator_xc(nn.Module):
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * lambda1
         return gradient_penalty
 
-#conditional discriminator for inductive
-class Discriminator_x0(nn.Module):
+class DFG_Discriminator_x0(nn.Module):
     def __init__(self, opt):
-        super(Discriminator_x0, self).__init__()
+        super(DFG_Discriminator_x0, self).__init__()
         self.fc1 = nn.Linear(opt.resSize + opt.attSize, opt.ndh)
         self.fc2 = nn.Linear(opt.ndh, 1)
         self.lrelu = nn.LeakyReLU(0.2, True)
@@ -294,10 +239,9 @@ class Discriminator_x0(nn.Module):
         gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean() * lambda1
         return gradient_penalty
 
-# conditional discriminator for inductive
-class Discriminator_xt(nn.Module):
+class DRG_Discriminator_ct(nn.Module):
     def __init__(self, opt):
-        super(Discriminator_xt, self).__init__()
+        super(DRG_Discriminator_ct, self).__init__()
         self.n_T = opt.n_T
         self.dim_v = opt.resSize
         self.dim_s = opt.attSize
@@ -314,7 +258,6 @@ class Discriminator_xt(nn.Module):
     def forward(self, x_t, x_tp1, att, t):
         t_emb_ = timestep_embedding(t, self.dim_t, repeat_only=False)
         t_emb = self.time_embed(t_emb_)
-        # t_rep = F.normalize(t_emb, p=2, dim=1)
 
         h = torch.cat((x_t, x_tp1, att, t_emb), 1)
         self.hidden = self.lrelu(self.fc1(h))
@@ -339,9 +282,9 @@ class Discriminator_xt(nn.Module):
         return gradient_penalty
 
 # conditional discriminator for inductive
-class Discriminator_xt_con(nn.Module):
+class DFG_Discriminator_xt(nn.Module):
     def __init__(self, opt):
-        super(Discriminator_xt_con, self).__init__()
+        super(DFG_Discriminator_xt, self).__init__()
         self.n_T = opt.n_T
         self.dim_v = opt.resSize
         self.dim_s = opt.attSize
@@ -412,20 +355,6 @@ class V2S_mapping(nn.Module):
 
     def getLayersOutDet(self):
         return self.hidden.detach()
-
-#Feedback Modules
-class Feedback(nn.Module):
-    def __init__(self,opt):
-        super(Feedback, self).__init__()
-        self.fc1 = nn.Linear(opt.ngh+2048, opt.ngh)
-        self.fc2 = nn.Linear(opt.ngh, opt.ngh)
-        self.lrelu = nn.LeakyReLU(0.2, True)
-        self.apply(weights_init)
-    def forward(self,h_s, h_c):
-        h = torch.cat([h_s,h_c],dim=1)
-        self.x1 = self.lrelu(self.fc1(h))
-        h = self.lrelu(self.fc2(self.x1))
-        return h
 
 def var_func_vp(t, beta_min, beta_max):
     log_mean_coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
