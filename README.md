@@ -8,6 +8,10 @@ Zero-shot Learning (ZSL) aims to enable classifiers to identify unseen classes. 
     <img width="500" alt="teaser" src="assets/banner.png"/>
 </div>
 
+<div align="center">
+    <img width="500" alt="teaser" src="assets/method.png"/>
+</div>
+
 ## Prerequisites
 + Python 3.8
 + Pytorch 1.12.1
@@ -29,8 +33,6 @@ The data percent splitting can be downloaded from https://drive.google.com/drive
 ### Download Dataset 
 
 Firstly, download these datasets as well as the xlsa17 and our data splitting and fine-tuned features. Then decompress and organize them as follows: 
-```
-
 ```
 .
 ├── Dataset
@@ -59,7 +61,7 @@ python ./scripts/train_awa2_zerodiff_DRG.py
 ```
 Then
 ```
-python train_awa2_zerodiff_DFG.py
+python ./scripts/train_awa2_zerodiff_DFG.py
 ```
 
 ## Results
