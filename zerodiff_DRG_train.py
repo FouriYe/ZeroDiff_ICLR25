@@ -13,10 +13,6 @@ from config_zerodiff import opt
 import zerodiff_tools
 import torch.nn.functional as F
 import classifiers.classifier_images as classifier
-from sklearn import preprocessing
-import numpy as np
-import torch.nn as nn
-
 
 def save_model(netG_con, model_save_name, post):
     torch.save({'state_dict_G_con': netG_con.state_dict(),
@@ -34,13 +30,13 @@ class Logger(object):
         f.write(message)
         f.close()
 
-logger_name = "./log/%s/zerodiff_DRG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_num:%s" % (
+logger_name = "./log/%s/train_zerodiff_DRG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_num:%s" % (
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
-    str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.syn_num)
+    str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.syn_num)
 logger = Logger(logger_name)
-model_save_name = "./out/%s/zerodiff_DRG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_num:%d" % (
+model_save_name = "./out/%s/train_zerodiff_DRG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_num:%d" % (
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
-    str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.syn_num)
+    str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.syn_num)
 
 if opt.manualSeed is None:
     opt.manualSeed = random.randint(1, 10000)
@@ -117,9 +113,9 @@ def generate_syn_feature(ddpmgan, classes, attribute, num):
     return syn_feature, syn_label
 
 
-class DDPMGAN(torch.nn.Module):
+class ZERODIFF_DRG(torch.nn.Module):
     def __init__(self, data, n_T, betas, seenclasses, unseenclasses, attribute, device='cuda'):
-        super(DDPMGAN, self).__init__()
+        super(ZERODIFF_DRG, self).__init__()
         self.n_T = n_T
         self.dim_v = opt.resSize
         self.dim_s = opt.attSize
@@ -133,9 +129,9 @@ class DDPMGAN(torch.nn.Module):
         self.prior_coefficients = zerodiff_tools.ddpmgan_prior_coefficients(betas[0], betas[1], n_T, device, False)
         self.posterior_coefficients = zerodiff_tools.ddpmgan_posterior_coefficients(betas[0], betas[1], n_T, device, False)
 
-        self.netG_con = zerodiff_tools.Generator_Diff_v1(opt).to(self.device)
-        self.netD_c0 = zerodiff_tools.Discriminator_x0(opt).to(self.device)
-        self.netD_ct = zerodiff_tools.Discriminator_xt(opt).to(self.device)
+        self.netG_con = zerodiff_tools.DRG_Generator(opt).to(self.device)
+        self.netD_c0 = zerodiff_tools.DFG_Discriminator_x0(opt).to(self.device)
+        self.netD_ct = zerodiff_tools.DRG_Discriminator_ct(opt).to(self.device)
         self.netDec = zerodiff_tools.V2S_mapping(opt, opt.attSize).to(self.device)
 
         self.optimizerG_con = optim.Adam(self.netG_con.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
@@ -155,13 +151,13 @@ class DDPMGAN(torch.nn.Module):
 
     def forward(self):
         for iter_d in range(opt.critic_iter):
-            x_0_real, con_0_real, att_0_real, label = sample(self.batch_size)
-            D_cost, Wasserstein_D = self.update_D(x_0_real, con_0_real, att_0_real, label)
-        G_cost, loss_att_mse = self.update_G(x_0_real, con_0_real, att_0_real, label)
+            _, con_0_real, att_0_real, label = sample(self.batch_size)
+            D_cost, Wasserstein_D = self.update_D(con_0_real, att_0_real, label)
+        G_cost, loss_att_mse = self.update_G(con_0_real, att_0_real, label)
 
         return D_cost, Wasserstein_D, G_cost, loss_att_mse
 
-    def update_D(self, x_0_real, con_0_real, att_0_real, label):
+    def update_D(self, con_0_real, att_0_real, label):
         for p in self.netD_c0.parameters():
             p.requires_grad = True
         for p in self.netD_ct.parameters():
@@ -184,7 +180,12 @@ class DDPMGAN(torch.nn.Module):
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
 
-        con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)
+        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        # NOTE!!!:
+        # The true code should be "con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)"
+        # If that, however, the performance deceases significantly.
+        # The reason is unknown.
+
         con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
 
         criticD_real_c0 = -self.netD_c0(con_0_real, att_0_real).mean()
@@ -212,7 +213,7 @@ class DDPMGAN(torch.nn.Module):
 
         return D_cost, Wasserstein_D
 
-    def update_G(self, x_0_real, con_0_real, att_0_real, label):
+    def update_G(self, con_0_real, att_0_real, label):
         for p in self.netG_con.parameters():
             p.requires_grad = True
         for p in self.netD_c0.parameters():
@@ -228,7 +229,13 @@ class DDPMGAN(torch.nn.Module):
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
-        con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)
+
+        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        # NOTE!!!:
+        # The true code should be "con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)"
+        # If that, however, the performance deceases significantly.
+        # The reason is unknown.
+
         con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
 
         errG = 0.0
@@ -251,8 +258,8 @@ class DDPMGAN(torch.nn.Module):
         with torch.no_grad():
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-            con_tp1_real = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_tp1_real, _ts_con)
+            con_t_real = torch.randn(n_sample, 2048).to(self.device)
+            con_0_fake = self.netG_con(z_con, att, con_t_real, _ts_con)
         return con_0_fake
 
     def q_sample_pairs(self, x_0, t):
@@ -300,7 +307,7 @@ class DDPMGAN(torch.nn.Module):
         return sample_x_pos
 
 
-ddpmgan = DDPMGAN(data, n_T=opt.n_T, betas=(opt.ddpmbeta1, opt.ddpmbeta2), seenclasses=data.seenclasses,
+zerodiff_drg = ZERODIFF_DRG(data, n_T=opt.n_T, betas=(opt.ddpmbeta1, opt.ddpmbeta2), seenclasses=data.seenclasses,
                   unseenclasses=data.unseenclasses, attribute=data.attribute, device='cuda')
 
 best_gzsl_acc_C = 0
@@ -320,7 +327,7 @@ nclass = opt.nclass_all
 data.train_feature, data.test_seen_feature, data.test_unseen_feature = data.train_paco, data.test_seen_paco, data.test_unseen_paco
 for epoch in range(0, opt.nepoch):
     for i in range(0, data.ntrain, opt.batch_size):
-        D_cost, Wasserstein_D, G_cost, loss_att_mse = ddpmgan()
+        D_cost, Wasserstein_D, G_cost, loss_att_mse = zerodiff_drg()
 
     log_record = '[%d/%d] D_cost:%.4f, Wasserstein_D:%.4f' % (epoch, opt.nepoch, D_cost.item(), Wasserstein_D.item())
     print(log_record)
@@ -332,9 +339,9 @@ for epoch in range(0, opt.nepoch):
     logger.write(log_record + '\n')
 
     if epoch % opt.eval_interval == 0 or epoch == (opt.nepoch - 1):
-        ddpmgan.eval()
-        syn_unseen_feat, syn_unseen_label = generate_syn_feature(ddpmgan, data.unseenclasses, data.attribute, opt.syn_num)
-        syn_seen_feat, syn_seen_label = generate_syn_feature(ddpmgan, data.seenclasses, data.attribute, opt.syn_num)
+        zerodiff_drg.eval()
+        syn_unseen_feat, syn_unseen_label = generate_syn_feature(zerodiff_drg, data.unseenclasses, data.attribute, opt.syn_num)
+        syn_seen_feat, syn_seen_label = generate_syn_feature(zerodiff_drg, data.seenclasses, data.attribute, opt.syn_num)
 
         # Generalized zero-shot learning
         if opt.gzsl:
@@ -346,7 +353,7 @@ for epoch in range(0, opt.nepoch):
                                                25, opt.syn_num, cls_mode="GZSL")
             if best_gzsl_acc_C < gzsl_cls_C.H:
                 best_acc_seen_C, best_acc_unseen_C, best_gzsl_acc_C = gzsl_cls_C.acc_seen, gzsl_cls_C.acc_unseen, gzsl_cls_C.H
-                save_model(ddpmgan.netG_con, model_save_name, '_gzsl')
+                save_model(zerodiff_drg.netG_con, model_save_name, '_gzsl')
             log_record = 'GZSL (C): U: %.4f, S: %.4f, H: %.4f' % (
             gzsl_cls_C.acc_unseen, gzsl_cls_C.acc_seen, gzsl_cls_C.H)
             print(log_record)
@@ -361,7 +368,7 @@ for epoch in range(0, opt.nepoch):
         acc = zsl_cls_C.acc
         if best_zsl_acc_C < acc:
             best_zsl_acc_C = acc
-            save_model(ddpmgan.netG_con, model_save_name, '_zsl')
+            save_model(zerodiff_drg.netG_con, model_save_name, '_zsl')
         log_record = 'ZSL (C): %.4f' % (acc)
         print(log_record)
         logger.write(log_record + '\n')
@@ -378,7 +385,7 @@ for epoch in range(0, opt.nepoch):
         logger.write(log_record + '\n')
 
         # reset G to training mode
-        ddpmgan.train()
+        zerodiff_drg.train()
 
         if opt.gzsl:
             log_record = "best GZSL (C): U: %.4f, S: %.4f, H: %.4f" % \
