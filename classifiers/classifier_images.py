@@ -1,4 +1,5 @@
 # author: ZihanYe
+# ZeroDiff (ICLR25)
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -116,6 +117,7 @@ class CLASSIFIER:
                 loss.backward()
                 self.optimizer.step()
             acc_list, acc = self.val(self.test_unseen_feature, self.test_unseen_label, self.unseenclasses)
+            # print("T1: ", acc)
             if acc > best_acc:
                 best_acc = acc
                 best_model = copy.deepcopy(self.model.state_dict())
@@ -148,6 +150,7 @@ class CLASSIFIER:
             acc_unseen_list, acc_unseen = self.val_gzsl(self.test_unseen_feature, self.test_unseen_label,
                                                         self.unseenclasses)
             H = 2 * acc_seen * acc_unseen / (acc_seen + acc_unseen)
+            # print("H: ", H)
             if H > best_H:
                 best_seen = acc_seen
                 best_unseen = acc_unseen
