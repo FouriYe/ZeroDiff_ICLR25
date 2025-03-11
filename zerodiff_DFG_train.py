@@ -198,7 +198,7 @@ class ZERODIFF(torch.nn.Module):
         self.batch_size = opt.batch_size
         self.data = data
 
-        self.netG_con = zerodiff_tools.Generator_Diff_v1(opt).to(self.device)
+        self.netG_con = zerodiff_tools.DRG_Generator(opt).to(self.device)
         netG_con_state_dict = torch.load(netG_con_model_path)
         self.netG_con.load_state_dict(netG_con_state_dict['state_dict_G_con'])
         self.netG_con.eval()
