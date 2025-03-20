@@ -12,7 +12,7 @@ os.system('''CUDA_VISIBLE_DEVICES=1 OMP_NUM_THREADS=4 python zerodiff_DFG_train.
 --lr 0.0005 --classifier_lr 0.001 --gamma_recons 1.0 --freeze_dec --dec_lr 0.0001 \
 --gamma_ADV 10 --gamma_VAE 1.0 --embed_type VA \
 --n_T 4 --dim_t 85 --gamma_x0 1.0 --gamma_xt 1.0 \
---split_percent 100 --syn_num 5400  --gamma_dist 5.0 --factor_dist 0.0 \
+--split_percent 100 --syn_num 5400  --gamma_dist 5.0 --factor_dist 1.5 \
 --netG_con_model_path ./out/AWA2/diffzero_pretrain_100percent_att:att_b:64_lr:0.0005_n_T:4_betas:0.1,20_gamma:ADV:10.0_VAE:1.0_x0:1.0_xt:1.0_dist:0.0_num:1800_gzsl.tar \
 ''')
 
