@@ -17,13 +17,13 @@ os.system('''CUDA_VISIBLE_DEVICES=1 OMP_NUM_THREADS=4 python zerodiff_DFG_train.
 ''')
 
 # split_percent 100:
-# --split_percent 100 --syn_num 5400  --gamma_dist 1.0 --factor_dist 1.5 \
+# --split_percent 100 --syn_num 5400  --gamma_dist 5.0 --factor_dist 1.5 \
 # --netG_con_model_path ./out/AWA2/diffzero_pretrain_100percent_att:att_b:64_lr:0.0005_n_T:4_betas:0.1,20_gamma:ADV:10.0_VAE:1.0_x0:1.0_xt:1.0_dist:0.0_num:1800_gzsl.tar \
 
 # split_percent 30:
-# --split_percent 30 --syn_num 1800  --gamma_dist 1.0 --factor_dist 1.5 \
+# --split_percent 30 --syn_num 1800  --gamma_dist 5.0 --factor_dist 1.5 \
 # --netG_con_model_path ./out/AWA2/diffzero_pretrain_30percent_att:att_b:64_lr:0.0005_n_T:4_betas:0.1,20_gamma:ADV:10.0_VAE:1.0_x0:1.0_xt:1.0_dist:0.0_num:600_gzsl.tar \
 
 # split_percent 10:
-# --split_percent 10 --syn_num 600  --gamma_dist 1.0 --factor_dist 1.5  \
+# --split_percent 10 --syn_num 600  --gamma_dist 5.0 --factor_dist 1.5  \
 # --netG_con_model_path ./out/AWA2/diffzero_pretrain_10percent_att:att_b:64_lr:0.0005_n_T:4_betas:0.1,20_gamma:ADV:10.0_VAE:1.0_x0:1.0_xt:1.0_dist:0.0_num:200_gzsl.tar \
