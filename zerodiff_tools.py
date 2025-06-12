@@ -122,7 +122,7 @@ class DRG_Generator(nn.Module):
 
         self.apply(weights_init)
 
-    def forward(self, z, c_t, att, t):
+    def forward(self, z, att, c_t, t):
         t_emb_ = timestep_embedding(t, self.dim_t, repeat_only=False)
         t_emb = self.time_embed(t_emb_)
         # t_rep = F.normalize(t_emb, p=2, dim=1)
