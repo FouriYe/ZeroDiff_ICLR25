@@ -14,8 +14,8 @@ import zerodiff_tools
 import torch.nn.functional as F
 import classifiers.classifier_images as classifier
 
-def save_model(netG_con, model_save_name, post):
-    torch.save({'state_dict_G_con': netG_con.state_dict(),
+def save_model(netR, model_save_name, post):
+    torch.save({'state_dict_G_con': netR.state_dict(),
                 }, model_save_name + post + '.tar')
 
 
@@ -129,12 +129,12 @@ class ZERODIFF_DRG(torch.nn.Module):
         self.prior_coefficients = zerodiff_tools.ddpmgan_prior_coefficients(betas[0], betas[1], n_T, device, False)
         self.posterior_coefficients = zerodiff_tools.ddpmgan_posterior_coefficients(betas[0], betas[1], n_T, device, False)
 
-        self.netG_con = zerodiff_tools.DRG_Generator(opt).to(self.device)
+        self.netR = zerodiff_tools.DRG_Generator(opt).to(self.device)
         self.netD_c0 = zerodiff_tools.DFG_Discriminator_x0(opt).to(self.device)
         self.netD_ct = zerodiff_tools.DRG_Discriminator_ct(opt).to(self.device)
         self.netDec = zerodiff_tools.V2S_mapping(opt, opt.attSize).to(self.device)
 
-        self.optimizerG_con = optim.Adam(self.netG_con.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizerG_con = optim.Adam(self.netR.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerD_c0 = optim.Adam(self.netD_c0.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerD_ct = optim.Adam(self.netD_ct.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerDec = optim.Adam(self.netDec.parameters(), lr=opt.dec_lr, betas=(opt.beta1, 0.999))
@@ -164,7 +164,7 @@ class ZERODIFF_DRG(torch.nn.Module):
             p.requires_grad = True
         for p in self.netDec.parameters():
             p.requires_grad = True
-        for p in self.netG_con.parameters():
+        for p in self.netR.parameters():
             p.requires_grad = False
 
         self.netD_c0.zero_grad()
@@ -180,9 +180,9 @@ class ZERODIFF_DRG(torch.nn.Module):
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
 
-        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        con_0_fake = self.netR(z, att_0_real, con_t_real, _ts_con)
         # NOTE!!!:
-        # The true code should be "con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)"
+        # The true code should be "con_0_fake = self.netR(z, att_0_real, con_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
         # The reason is unknown.
 
@@ -214,7 +214,7 @@ class ZERODIFF_DRG(torch.nn.Module):
         return D_cost, Wasserstein_D
 
     def update_G(self, con_0_real, att_0_real, label):
-        for p in self.netG_con.parameters():
+        for p in self.netR.parameters():
             p.requires_grad = True
         for p in self.netD_c0.parameters():
             p.requires_grad = False
@@ -223,16 +223,16 @@ class ZERODIFF_DRG(torch.nn.Module):
         for p in self.netDec.parameters():  # freeze decoder
             p.requires_grad = False
 
-        self.netG_con.zero_grad()
+        self.netR.zero_grad()
 
         # contrastive reconstruction seen
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
 
-        con_0_fake = self.netG_con(z, att_0_real, con_t_real, _ts_con)
+        con_0_fake = self.netR(z, att_0_real, con_t_real, _ts_con)
         # NOTE!!!:
-        # The true code should be "con_0_fake = self.netG_con(z, att_0_real, con_tp1_real, _ts_con)"
+        # The true code should be "con_0_fake = self.netR(z, att_0_real, con_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
         # The reason is unknown.
 
@@ -259,7 +259,7 @@ class ZERODIFF_DRG(torch.nn.Module):
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
             con_t_real = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_t_real, _ts_con)
+            con_0_fake = self.netR(z_con, att, con_t_real, _ts_con)
         return con_0_fake
 
     def q_sample_pairs(self, x_0, t):
@@ -353,7 +353,7 @@ for epoch in range(0, opt.nepoch):
                                                25, opt.syn_num, cls_mode="GZSL")
             if best_gzsl_acc_C < gzsl_cls_C.H:
                 best_acc_seen_C, best_acc_unseen_C, best_gzsl_acc_C = gzsl_cls_C.acc_seen, gzsl_cls_C.acc_unseen, gzsl_cls_C.H
-                save_model(zerodiff_drg.netG_con, model_save_name, '_gzsl')
+                save_model(zerodiff_drg.netR, model_save_name, '_gzsl')
             log_record = 'GZSL (C): U: %.4f, S: %.4f, H: %.4f' % (
             gzsl_cls_C.acc_unseen, gzsl_cls_C.acc_seen, gzsl_cls_C.H)
             print(log_record)
@@ -368,7 +368,7 @@ for epoch in range(0, opt.nepoch):
         acc = zsl_cls_C.acc
         if best_zsl_acc_C < acc:
             best_zsl_acc_C = acc
-            save_model(zerodiff_drg.netG_con, model_save_name, '_zsl')
+            save_model(zerodiff_drg.netR, model_save_name, '_zsl')
         log_record = 'ZSL (C): %.4f' % (acc)
         print(log_record)
         logger.write(log_record + '\n')
@@ -400,5 +400,6 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (C): %.4f' % (best_seen_acc_C.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
