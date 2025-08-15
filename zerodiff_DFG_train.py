@@ -38,7 +38,7 @@ logger_name = "./log/%s/train_zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_be
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
     str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.factor_dist, opt.syn_num)
 logger = Logger(logger_name)
-model_save_name = "./out/%s/train_zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%d" % (
+model_save_name = "./out/%s/zerodiff_DFG_%dpercent_att:%s_b:%d_lr:%s_n_T:%d_betas:%s,%s_gamma:ADV:%.1f_VAE:%.1f_x0:%.1f_xt:%.1f_dist:%.1f_f:%.1f_num:%d" % (
     opt.dataset, opt.split_percent, opt.class_embedding, opt.batch_size, str(opt.lr), opt.n_T, str(opt.ddpmbeta1),
     str(opt.ddpmbeta2), opt.gamma_ADV, opt.gamma_VAE, opt.gamma_x0, opt.gamma_xt, opt.gamma_dist, opt.factor_dist, opt.syn_num)
 
@@ -956,4 +956,5 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (V): %.4f' % (best_seen_acc_V.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
