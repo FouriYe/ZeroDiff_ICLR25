@@ -155,7 +155,7 @@ def save_zerodiff(zerodiff, save_name, post):
 
 
 class ZERODIFF(torch.nn.Module):
-    def __init__(self, data, n_T, betas, seenclasses, unseenclasses, attribute,  netG_con_model_path, device='cuda'):
+    def __init__(self, data, n_T, betas, seenclasses, unseenclasses, attribute,  netR_model_path, device='cuda'):
         super(ZERODIFF, self).__init__()
         self.n_T = n_T
         self.dim_v = opt.resSize
@@ -198,10 +198,10 @@ class ZERODIFF(torch.nn.Module):
         self.batch_size = opt.batch_size
         self.data = data
 
-        self.netG_con = zerodiff_tools.DRG_Generator(opt).to(self.device)
-        netG_con_state_dict = torch.load(netG_con_model_path)
-        self.netG_con.load_state_dict(netG_con_state_dict['state_dict_G_con'])
-        self.netG_con.eval()
+        self.netR = zerodiff_tools.DRG_Generator(opt).to(self.device)
+        netR_state_dict = torch.load(netR_model_path)
+        self.netR.load_state_dict(netR_state_dict['state_dict_G_con'])
+        self.netR.eval()
 
         self.interval_recorder_sum = {}
         self.init_recorder()
@@ -392,7 +392,7 @@ class ZERODIFF(torch.nn.Module):
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device) # torch.randint(0, self.n_T + 1, (n_sample,), dtype=torch.int64).to(self.device)
             con_t = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netG_con(z_con, att, con_t, _ts_con)
+            con_0_fake = self.netR(z_con, att, con_t, _ts_con)
             con_0_fake = con_0_fake.detach()
 
             if progressive:
@@ -464,7 +464,7 @@ class ZERODIFF(torch.nn.Module):
 
 zerodiff = ZERODIFF(data, n_T=opt.n_T, betas=(opt.ddpmbeta1, opt.ddpmbeta2), seenclasses=data.seenclasses,
                   unseenclasses=data.unseenclasses, attribute=data.attribute,
-                  netG_con_model_path=opt.netG_con_model_path, device='cuda')
+                  netR_model_path=opt.netR_model_path, device='cuda')
 zerodiff.train()
 
 best_gzsl_acc_V = 0
@@ -956,3 +956,4 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (V): %.4f' % (best_seen_acc_V.item())
         print(log_record)
         logger.write(log_record + '\n')
+
