@@ -62,7 +62,7 @@ parser.add_argument('--ddpmbeta2', type=float, default=20)
 # pretrain
 parser.add_argument('--init_con', action='store_true', default=False, help='enbale MinMaxScaler on contrastive representations')
 parser.add_argument("--netE_con_model_path", default=None)
-parser.add_argument("--netG_con_model_path", default=None)
+parser.add_argument("--netR_model_path", default=None)
 # eval
 parser.add_argument("--netG_model_path", default=None)
 #visualize
@@ -73,3 +73,4 @@ opt.lambda2 = opt.lambda1
 opt.encoder_layer_sizes[0] = opt.resSize
 opt.decoder_layer_sizes[-1] = opt.resSize
 opt.latent_size = opt.attSize
+
