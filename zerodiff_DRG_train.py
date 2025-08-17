@@ -130,13 +130,13 @@ class ZERODIFF_DRG(torch.nn.Module):
         self.posterior_coefficients = zerodiff_tools.ddpmgan_posterior_coefficients(betas[0], betas[1], n_T, device, False)
 
         self.netR = zerodiff_tools.DRG_Generator(opt).to(self.device)
-        self.netD_c0 = zerodiff_tools.DFG_Discriminator_x0(opt).to(self.device)
-        self.netD_ct = zerodiff_tools.DRG_Discriminator_ct(opt).to(self.device)
+        self.netD_r0 = zerodiff_tools.DFG_Discriminator_x0(opt).to(self.device)
+        self.netD_rt = zerodiff_tools.DRG_Discriminator_ct(opt).to(self.device)
         self.netDec = zerodiff_tools.V2S_mapping(opt, opt.attSize).to(self.device)
 
         self.optimizerR = optim.Adam(self.netR.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-        self.optimizerD_c0 = optim.Adam(self.netD_c0.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-        self.optimizerD_ct = optim.Adam(self.netD_ct.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizerD_r0 = optim.Adam(self.netD_r0.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizerD_rt = optim.Adam(self.netD_rt.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerDec = optim.Adam(self.netDec.parameters(), lr=opt.dec_lr, betas=(opt.beta1, 0.999))
 
         self.gamma_x0 = opt.gamma_x0
@@ -158,17 +158,17 @@ class ZERODIFF_DRG(torch.nn.Module):
         return D_cost, Wasserstein_D, G_cost, loss_att_mse
 
     def update_D(self, r_0_real, att_0_real, label):
-        for p in self.netD_c0.parameters():
+        for p in self.netD_r0.parameters():
             p.requires_grad = True
-        for p in self.netD_ct.parameters():
+        for p in self.netD_rt.parameters():
             p.requires_grad = True
         for p in self.netDec.parameters():
             p.requires_grad = True
         for p in self.netR.parameters():
             p.requires_grad = False
 
-        self.netD_c0.zero_grad()
-        self.netD_ct.zero_grad()
+        self.netD_r0.zero_grad()
+        self.netD_rt.zero_grad()
         self.netDec.zero_grad()
 
         att_0_recons = self.netDec(r_0_real)
@@ -188,37 +188,37 @@ class ZERODIFF_DRG(torch.nn.Module):
 
         r_t_fake = self.sample_posterior(r_0_fake, r_tp1_real, _ts_con)
 
-        criticD_real_c0 = -self.netD_c0(r_0_real, att_0_real).mean()
-        criticD_real_ct = -self.netD_ct(r_t_real, r_tp1_real, att_0_real, _ts_con).mean()
-        criticD_real = self.gamma_x0 * criticD_real_c0 + self.gamma_xt * criticD_real_ct
+        criticD_real_r0 = -self.netD_r0(r_0_real, att_0_real).mean()
+        criticD_real_rt = -self.netD_rt(r_t_real, r_tp1_real, att_0_real, _ts_con).mean()
+        criticD_real = self.gamma_x0 * criticD_real_r0 + self.gamma_xt * criticD_real_rt
         criticD_real.backward()
 
-        criticD_fake_c0 = self.netD_c0(r_0_fake.detach(), att_0_real).mean()
-        criticG_fake_ct = self.netD_ct(r_t_fake.detach(), r_tp1_real, att_0_real, _ts_con).mean()
-        criticD_fake = self.gamma_x0 * criticD_fake_c0 + self.gamma_xt * criticG_fake_ct
+        criticD_fake_r0 = self.netD_r0(r_0_fake.detach(), att_0_real).mean()
+        criticG_fake_rt = self.netD_rt(r_t_fake.detach(), r_tp1_real, att_0_real, _ts_con).mean()
+        criticD_fake = self.gamma_x0 * criticD_fake_r0 + self.gamma_xt * criticG_fake_rt
         criticD_fake.backward()
 
         Wasserstein_D = criticD_real - criticD_fake
 
-        gp_c0 = self.netD_c0.calc_gradient_penalty(r_0_real, r_0_fake.data, att_0_real, self.lambda1)
-        gp_ct = self.netD_ct.calc_gradient_penalty(r_t_real, r_t_fake.data, r_tp1_real, att_0_real, _ts_con, self.lambda1)
-        gp = self.gamma_x0 * gp_c0 + self.gamma_xt * gp_ct
+        gp_r0 = self.netD_r0.calc_gradient_penalty(r_0_real, r_0_fake.data, att_0_real, self.lambda1)
+        gp_rt = self.netD_rt.calc_gradient_penalty(r_t_real, r_t_fake.data, r_tp1_real, att_0_real, _ts_con, self.lambda1)
+        gp = self.gamma_x0 * gp_r0 + self.gamma_xt * gp_rt
         gp.backward()
 
         D_cost = criticD_fake - criticD_real + gp
 
         self.optimizerDec.step()
-        self.optimizerD_c0.step()
-        self.optimizerD_ct.step()
+        self.optimizerD_r0.step()
+        self.optimizerD_rt.step()
 
         return D_cost, Wasserstein_D
 
     def update_G(self, r_0_real, att_0_real, label):
         for p in self.netR.parameters():
             p.requires_grad = True
-        for p in self.netD_c0.parameters():
+        for p in self.netD_r0.parameters():
             p.requires_grad = False
-        for p in self.netD_ct.parameters():
+        for p in self.netD_rt.parameters():
             p.requires_grad = False
         for p in self.netDec.parameters():  # freeze decoder
             p.requires_grad = False
@@ -243,9 +243,9 @@ class ZERODIFF_DRG(torch.nn.Module):
         att_0_recons = self.netDec(r_0_fake)
         loss_att_mse = self.loss_mse(att_0_recons, att_0_real)
 
-        criticG_fake_c0 = -self.netD_c0(r_0_fake, att_0_real).mean()
-        criticG_fake_ct = -self.netD_ct(r_t_fake, r_tp1_real, att_0_real, _ts_con).mean()
-        criticG_fake = self.gamma_x0 * criticG_fake_c0 + self.gamma_xt * criticG_fake_ct
+        criticG_fake_r0 = -self.netD_r0(r_0_fake, att_0_real).mean()
+        criticG_fake_rt = -self.netD_rt(r_t_fake, r_tp1_real, att_0_real, _ts_con).mean()
+        criticG_fake = self.gamma_x0 * criticG_fake_r0 + self.gamma_xt * criticG_fake_rt
         G_cost = criticG_fake
         errG += G_cost
 
@@ -271,10 +271,14 @@ class ZERODIFF_DRG(torch.nn.Module):
         """
         t = t.long()
         noise = torch.randn_like(x_0)
-        x_t = self.q_sample(x_0, t)
-        x_t_plus_one = zerodiff_tools.extract(self.prior_coefficients.sqrt_alphas, t + 1, x_0.shape) * x_t + \
-                       zerodiff_tools.extract(self.prior_coefficients.sigmas, t + 1, x_0.shape) * noise
-        return x_t, x_t_plus_one
+        x_t, ratio_x0 = self.q_sample(x_0, t)
+
+        ratio_xt2xtp1 = zerodiff_tools.extract(self.prior_coefficients.sqrt_alphas, t + 1, x_0.shape)
+        ratio_noise = zerodiff_tools.extract(self.prior_coefficients.sigmas, t + 1, x_0.shape)
+
+        x_t_plus_one = ratio_xt2xtp1 * x_t + ratio_noise * noise
+
+        return x_t, x_t_plus_one, ratio_x0
 
     def q_sample(self, x_0, t):
         """
@@ -284,9 +288,13 @@ class ZERODIFF_DRG(torch.nn.Module):
         """
         t = t.long()
         noise = torch.randn_like(x_0)
-        x_t = zerodiff_tools.extract(self.prior_coefficients.sqrt_alphas_bar, t, x_0.shape) * x_0 + \
-              zerodiff_tools.extract(self.prior_coefficients.sigmas_bar, t, x_0.shape) * noise
-        return x_t
+
+        ratio_x0 = zerodiff_tools.extract(self.prior_coefficients.sqrt_alphas_bar, t, x_0.shape)
+        ratio_noise = zerodiff_tools.extract(self.prior_coefficients.sigmas_bar, t, x_0.shape)
+
+        x_t = ratio_x0 * x_0 + ratio_noise * noise
+
+        return x_t, ratio_x0
 
     def sample_posterior(self, x_0, x_t, t):
         """
@@ -405,6 +413,7 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (C): %.4f' % (best_seen_acc_C.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
 
