@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import classifiers.classifier_images as classifier
 
 def save_model(netR, model_save_name, post):
-    torch.save({'state_dict_G_con': netR.state_dict(),
+    torch.save({'state_dict_R': netR.state_dict(),
                 }, model_save_name + post + '.tar')
 
 
@@ -134,7 +134,7 @@ class ZERODIFF_DRG(torch.nn.Module):
         self.netD_ct = zerodiff_tools.DRG_Discriminator_ct(opt).to(self.device)
         self.netDec = zerodiff_tools.V2S_mapping(opt, opt.attSize).to(self.device)
 
-        self.optimizerG_con = optim.Adam(self.netR.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+        self.optimizerR = optim.Adam(self.netR.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerD_c0 = optim.Adam(self.netD_c0.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerD_ct = optim.Adam(self.netD_ct.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
         self.optimizerDec = optim.Adam(self.netDec.parameters(), lr=opt.dec_lr, betas=(opt.beta1, 0.999))
@@ -151,13 +151,13 @@ class ZERODIFF_DRG(torch.nn.Module):
 
     def forward(self):
         for iter_d in range(opt.critic_iter):
-            _, con_0_real, att_0_real, label = sample(self.batch_size)
-            D_cost, Wasserstein_D = self.update_D(con_0_real, att_0_real, label)
-        G_cost, loss_att_mse = self.update_G(con_0_real, att_0_real, label)
+            _, r_0_real, att_0_real, label = sample(self.batch_size)
+            D_cost, Wasserstein_D = self.update_D(r_0_real, att_0_real, label)
+        G_cost, loss_att_mse = self.update_G(r_0_real, att_0_real, label)
 
         return D_cost, Wasserstein_D, G_cost, loss_att_mse
 
-    def update_D(self, con_0_real, att_0_real, label):
+    def update_D(self, r_0_real, att_0_real, label):
         for p in self.netD_c0.parameters():
             p.requires_grad = True
         for p in self.netD_ct.parameters():
@@ -171,37 +171,37 @@ class ZERODIFF_DRG(torch.nn.Module):
         self.netD_ct.zero_grad()
         self.netDec.zero_grad()
 
-        att_0_recons = self.netDec(con_0_real)
+        att_0_recons = self.netDec(r_0_real)
         R_cost = self.loss_mse(att_0_recons, att_0_real)
         R_cost.backward()
 
         # contrastive reconstruction seen
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
-        con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
+        r_t_real, r_tp1_real = self.q_sample_pairs(r_0_real, _ts_con)
 
-        con_0_fake = self.netR(z, att_0_real, con_t_real, _ts_con)
+        r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
-        # The true code should be "con_0_fake = self.netR(z, att_0_real, con_tp1_real, _ts_con)"
+        # The true code should be "r_0_fake = self.netR(z, att_0_real, r_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
         # The reason is unknown.
 
-        con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
+        r_t_fake = self.sample_posterior(r_0_fake, r_tp1_real, _ts_con)
 
-        criticD_real_c0 = -self.netD_c0(con_0_real, att_0_real).mean()
-        criticD_real_ct = -self.netD_ct(con_t_real, con_tp1_real, att_0_real, _ts_con).mean()
+        criticD_real_c0 = -self.netD_c0(r_0_real, att_0_real).mean()
+        criticD_real_ct = -self.netD_ct(r_t_real, r_tp1_real, att_0_real, _ts_con).mean()
         criticD_real = self.gamma_x0 * criticD_real_c0 + self.gamma_xt * criticD_real_ct
         criticD_real.backward()
 
-        criticD_fake_c0 = self.netD_c0(con_0_fake.detach(), att_0_real).mean()
-        criticG_fake_ct = self.netD_ct(con_t_fake.detach(), con_tp1_real, att_0_real, _ts_con).mean()
+        criticD_fake_c0 = self.netD_c0(r_0_fake.detach(), att_0_real).mean()
+        criticG_fake_ct = self.netD_ct(r_t_fake.detach(), r_tp1_real, att_0_real, _ts_con).mean()
         criticD_fake = self.gamma_x0 * criticD_fake_c0 + self.gamma_xt * criticG_fake_ct
         criticD_fake.backward()
 
         Wasserstein_D = criticD_real - criticD_fake
 
-        gp_c0 = self.netD_c0.calc_gradient_penalty(con_0_real, con_0_fake.data, att_0_real, self.lambda1)
-        gp_ct = self.netD_ct.calc_gradient_penalty(con_t_real, con_t_fake.data, con_tp1_real, att_0_real, _ts_con, self.lambda1)
+        gp_c0 = self.netD_c0.calc_gradient_penalty(r_0_real, r_0_fake.data, att_0_real, self.lambda1)
+        gp_ct = self.netD_ct.calc_gradient_penalty(r_t_real, r_t_fake.data, r_tp1_real, att_0_real, _ts_con, self.lambda1)
         gp = self.gamma_x0 * gp_c0 + self.gamma_xt * gp_ct
         gp.backward()
 
@@ -213,7 +213,7 @@ class ZERODIFF_DRG(torch.nn.Module):
 
         return D_cost, Wasserstein_D
 
-    def update_G(self, con_0_real, att_0_real, label):
+    def update_G(self, r_0_real, att_0_real, label):
         for p in self.netR.parameters():
             p.requires_grad = True
         for p in self.netD_c0.parameters():
@@ -228,29 +228,29 @@ class ZERODIFF_DRG(torch.nn.Module):
         # contrastive reconstruction seen
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
-        con_t_real, con_tp1_real = self.q_sample_pairs(con_0_real, _ts_con)
+        r_t_real, r_tp1_real = self.q_sample_pairs(r_0_real, _ts_con)
 
-        con_0_fake = self.netR(z, att_0_real, con_t_real, _ts_con)
+        r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
-        # The true code should be "con_0_fake = self.netR(z, att_0_real, con_tp1_real, _ts_con)"
+        # The true code should be "r_0_fake = self.netR(z, att_0_real, r_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
         # The reason is unknown.
 
-        con_t_fake = self.sample_posterior(con_0_fake, con_tp1_real, _ts_con)
+        r_t_fake = self.sample_posterior(r_0_fake, r_tp1_real, _ts_con)
 
         errG = 0.0
 
-        att_0_recons = self.netDec(con_0_fake)
+        att_0_recons = self.netDec(r_0_fake)
         loss_att_mse = self.loss_mse(att_0_recons, att_0_real)
 
-        criticG_fake_c0 = -self.netD_c0(con_0_fake, att_0_real).mean()
-        criticG_fake_ct = -self.netD_ct(con_t_fake, con_tp1_real, att_0_real, _ts_con).mean()
+        criticG_fake_c0 = -self.netD_c0(r_0_fake, att_0_real).mean()
+        criticG_fake_ct = -self.netD_ct(r_t_fake, r_tp1_real, att_0_real, _ts_con).mean()
         criticG_fake = self.gamma_x0 * criticG_fake_c0 + self.gamma_xt * criticG_fake_ct
         G_cost = criticG_fake
         errG += G_cost
 
         errG.backward()
-        self.optimizerG_con.step()
+        self.optimizerR.step()
         return G_cost, loss_att_mse
 
     def sample_from_model(self, att):
@@ -258,9 +258,9 @@ class ZERODIFF_DRG(torch.nn.Module):
         with torch.no_grad():
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-            con_t_real = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netR(z_con, att, con_t_real, _ts_con)
-        return con_0_fake
+            r_t_real = torch.randn(n_sample, 2048).to(self.device)
+            r_0_fake = self.netR(z_con, att, r_t_real, _ts_con)
+        return r_0_fake
 
     def q_sample_pairs(self, x_0, t):
         """
@@ -324,7 +324,8 @@ best_seen_acc_C = 0
 
 nclass = opt.nclass_all
 
-data.train_feature, data.test_seen_feature, data.test_unseen_feature = data.train_paco, data.test_seen_paco, data.test_unseen_paco
+# data.train_feature, data.test_seen_feature, data.test_unseen_feature = data.train_paco, data.test_seen_paco, data.test_unseen_paco
+
 for epoch in range(0, opt.nepoch):
     for i in range(0, data.ntrain, opt.batch_size):
         D_cost, Wasserstein_D, G_cost, loss_att_mse = zerodiff_drg()
@@ -340,17 +341,22 @@ for epoch in range(0, opt.nepoch):
 
     if epoch % opt.eval_interval == 0 or epoch == (opt.nepoch - 1):
         zerodiff_drg.eval()
-        syn_unseen_feat, syn_unseen_label = generate_syn_feature(zerodiff_drg, data.unseenclasses, data.attribute, opt.syn_num)
-        syn_seen_feat, syn_seen_label = generate_syn_feature(zerodiff_drg, data.seenclasses, data.attribute, opt.syn_num)
+        syn_unseen_con, syn_unseen_label = generate_syn_feature(zerodiff_drg, data.unseenclasses, data.attribute, opt.syn_num)
+        syn_seen_con, syn_seen_label = generate_syn_feature(zerodiff_drg, data.seenclasses, data.attribute, opt.syn_num)
+        
+        syn_unseen_feat = syn_unseen_con.copy() # just a placehold in DRG train, not really used
+        syn_seen_feat = syn_seen_con.copy() # just a placehold in DRG train, not really used
 
         # Generalized zero-shot learning
         if opt.gzsl:
             # Concatenate real seen features with synthesized unseen features
             train_X = torch.cat((data.train_feature.cpu(), syn_unseen_feat.cpu()), 0)
             train_Y = torch.cat((data.train_label, syn_unseen_label), 0)
+            train_C = torch.cat((data.train_paco.cpu(), syn_unseen_con.cpu()), 0)
+            
             # Train GZSL classifier
             gzsl_cls_C = classifier.CLASSIFIER(train_X, train_Y, data, nclass, opt.cuda, opt.classifier_lr, 0.5, \
-                                               25, opt.syn_num, cls_mode="GZSL")
+                                               25, opt.syn_num, cls_mode="GZSL", con_size=2048, _train_C=train_C, useV=False, useC=True)
             if best_gzsl_acc_C < gzsl_cls_C.H:
                 best_acc_seen_C, best_acc_unseen_C, best_gzsl_acc_C = gzsl_cls_C.acc_seen, gzsl_cls_C.acc_unseen, gzsl_cls_C.H
                 save_model(zerodiff_drg.netR, model_save_name, '_gzsl')
@@ -362,9 +368,8 @@ for epoch in range(0, opt.nepoch):
         # Zero-shot learning
         # Train ZSL classifier
         zsl_cls_C = classifier.CLASSIFIER(syn_unseen_feat.cpu(), util.map_label(syn_unseen_label, data.unseenclasses),
-                                          data,
-                                          data.unseenclasses.size(0), opt.cuda, opt.classifier_lr, 0.5, \
-                                          25, opt.syn_num, cls_mode="ZSL")
+                                          data, data.unseenclasses.size(0), opt.cuda, opt.classifier_lr, 0.5, \
+                                          25, opt.syn_num, cls_mode="ZSL", con_size=2048, _train_C=syn_unseen_con, useV=False, useC=True)
         acc = zsl_cls_C.acc
         if best_zsl_acc_C < acc:
             best_zsl_acc_C = acc
@@ -376,7 +381,7 @@ for epoch in range(0, opt.nepoch):
         # Train Seen classifier
         seen_cls_C = classifier.CLASSIFIER(syn_seen_feat.cpu(), util.map_label(syn_seen_label, data.seenclasses), data,
                                            data.seenclasses.size(0), opt.cuda, opt.classifier_lr, 0.5, \
-                                           25, opt.syn_num, cls_mode="seen")
+                                           25, opt.syn_num, cls_mode="seen", con_size=2048, _train_C=syn_seen_con, useV=False, useC=True)
         acc = seen_cls_C.acc
         if best_seen_acc_C < acc:
             best_seen_acc_C = acc
@@ -400,6 +405,7 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (C): %.4f' % (best_seen_acc_C.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
 
