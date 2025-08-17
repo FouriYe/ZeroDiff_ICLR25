@@ -386,28 +386,28 @@ class ZERODIFF(torch.nn.Module):
     def sample_from_model(self, att, progressive=False):
         n_sample = att.shape[0]
         with torch.no_grad():
-            x_t = torch.randn(n_sample, self.dim_v).to(self.device)
+            x_tp1 = torch.randn(n_sample, self.dim_v).to(self.device)
             z = torch.randn(n_sample, self.dim_noise).to(self.device)
 
             z_con = torch.randn(n_sample, self.dim_noise).to(self.device)
             _ts_con = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device) # torch.randint(0, self.n_T + 1, (n_sample,), dtype=torch.int64).to(self.device)
-            con_t = torch.randn(n_sample, 2048).to(self.device)
-            con_0_fake = self.netR(z_con, att, con_t, _ts_con)
-            con_0_fake = con_0_fake.detach()
+            r_tp1 = torch.randn(n_sample, 2048).to(self.device)
+            r_0_fake = self.netR(z_con, att, r_tp1, _ts_con)
+            r_0_fake = r_0_fake.detach()
 
             if progressive:
                 for i in reversed(range(self.n_T)):
                     _ts = torch.full((n_sample,), i, dtype=torch.int64).to(x_t.device)
-                    x_0_pred = self.netG(z, att, con_0_fake, x_t, _ts)
-                    x_t_sub_one = self.sample_posterior(x_0_pred, x_t, _ts.long())
-                    x_t = x_t_sub_one.detach()
+                    x_0_pred = self.netG(z, att, r_0_fake, x_tp1, _ts)
+                    x_t = self.sample_posterior(x_0_pred, x_tp1, _ts.long())
+                    x_tp1 = x_t.detach()
                 x_0_fake = x_0_pred.detach()
             else:
                 _ts = (self.n_T - 1) + torch.zeros((n_sample,), dtype=torch.int64).to(self.device)
-                x_0_fake = self.netG(z, att, con_0_fake, x_t, _ts)
+                x_0_fake = self.netG(z, att, r_0_fake, x_tp1, _ts)
                 x_0_fake = x_0_fake.detach()
 
-        return x_0_fake, con_0_fake
+        return x_0_fake, r_0_fake
 
     def q_sample_pairs(self, x_0, t):
         """
@@ -956,5 +956,6 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (V): %.4f' % (best_seen_acc_V.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
