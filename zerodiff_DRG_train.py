@@ -178,7 +178,7 @@ class ZERODIFF_DRG(torch.nn.Module):
         # contrastive reconstruction seen
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
-        r_t_real, r_tp1_real = self.q_sample_pairs(r_0_real, _ts_con)
+        r_t_real, r_tp1_real, _ = self.q_sample_pairs(r_0_real, _ts_con)
 
         r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
@@ -228,7 +228,7 @@ class ZERODIFF_DRG(torch.nn.Module):
         # contrastive reconstruction seen
         z = torch.randn(self.batch_size, self.dim_noise).to(self.device)
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
-        r_t_real, r_tp1_real = self.q_sample_pairs(r_0_real, _ts_con)
+        r_t_real, r_tp1_real, _ = self.q_sample_pairs(r_0_real, _ts_con)
 
         r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
@@ -413,6 +413,7 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (C): %.4f' % (best_seen_acc_C.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
 
