@@ -180,7 +180,10 @@ class ZERODIFF_DRG(torch.nn.Module):
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         r_t_real, r_tp1_real, _ = self.q_sample_pairs(r_0_real, _ts_con)
 
-        r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
+        if opt.dataset == "AWA2":
+            r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
+        else:
+            r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
         # The true code should be "r_0_fake = self.netR(z, att_0_real, r_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
@@ -230,7 +233,10 @@ class ZERODIFF_DRG(torch.nn.Module):
         _ts_con = torch.randint(0, self.n_T, (self.batch_size,), dtype=torch.int64).to(self.device)
         r_t_real, r_tp1_real, _ = self.q_sample_pairs(r_0_real, _ts_con)
 
-        r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
+        if opt.dataset == "AWA2":
+            r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
+        else:
+            r_0_fake = self.netR(z, att_0_real, r_t_real, _ts_con)
         # NOTE!!!:
         # The true code should be "r_0_fake = self.netR(z, att_0_real, r_tp1_real, _ts_con)"
         # If that, however, the performance deceases significantly.
@@ -413,6 +419,7 @@ for epoch in range(0, opt.nepoch):
         log_record = 'best seen (C): %.4f' % (best_seen_acc_C.item())
         print(log_record)
         logger.write(log_record + '\n')
+
 
 
 
