@@ -28,7 +28,7 @@ Zero-shot Learning (ZSL) aims to enable classifiers to identify unseen classes. 
 
 ## Data preparation
 
-We trained the model on three popular ZSL benchmarks: [CUB](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html), [SUN](http://cs.brown.edu/~gmpatter/sunattributes.html) and [AWA2](http://cvml.ist.ac.at/AwA2/) following the data split of [xlsa17](http://datasets.d2.mpi-inf.mpg.de/xian/xlsa17.zip).
+We trained the model on three popular ZSL benchmarks: [CUB](http://www.vision.caltech.edu/visipedia/CUB-200-2011.html) ([sent semantic embedding](https://www.robots.ox.ac.uk/~lz/DEM_cvpr2017/data.zip)), [SUN](http://cs.brown.edu/~gmpatter/sunattributes.html) and [AWA2](http://cvml.ist.ac.at/AwA2/) following the data split of [xlsa17](http://datasets.d2.mpi-inf.mpg.de/xian/xlsa17.zip).
 
 Our fine-tuned features can be downloaded from https://drive.google.com/drive/folders/1MW_GPqN7g9idJrtYg8eLszqFMXj-YKrq?usp=drive_link.
 
